@@ -212,7 +212,9 @@ section, aside { min-width: 0; }
   letter-spacing: .08em; color: var(--text-3); margin-bottom: 10px;
 }
 .panel h3 small { color: var(--text-4); text-transform: none; letter-spacing: 0; font-weight: 400; }
-.row { display: flex; align-items: center; gap: 10px; }
+/* flex-wrap: 窄栏 (桌面端右栏仅 300px) 下按钮行/滑块行内容超出时必须换行,
+   否则末位按钮会直接撑破面板边界 (实测「清空所有图片文字」溢出 55px) */
+.row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .row + .row { margin-top: 8px; }
 .row > span { font-size: 13px; color: var(--text-2); min-width: 56px; }
 #t1, #t2 {
@@ -271,8 +273,28 @@ button:hover { border-color: var(--border-strong); color: var(--text); }
 @media (max-width: 1020px) {
   main { grid-template-columns: 240px minmax(0, 1fr); }
   #controls { grid-column: 1 / -1; position: static; max-height: none; }
-  .panel { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); padding: 0 16px 8px; }
-  .group { border-top: 0; padding: 14px 0; }
+  /* 控件跨整行后横向分组。
+     列宽下限必须 >= 组内最宽控件 (模板按钮行约 370px / 文字按钮行约 320px)，
+     低于此值会挤成 3 列, 导致按钮被迫换行、并溢出到相邻列造成视觉重叠。
+     列间距同理必须显式给出, 否则溢出的内容会直接压到邻列上。 */
+  .panel {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
+    column-gap: 32px;
+    align-items: start;
+    padding: 0 16px 8px;
+  }
+  .group { border-top: 0; padding: 14px 0; min-width: 0; }
+  /* 宽列里让滑块吃满剩余空间, 避免右侧大片留白 */
+  .row input[type="range"] { flex: 1 1 130px; max-width: 280px; }
+  /* 小屏下重排顺序, 让高矮组配对 (卡片模板+底部文字 / 导出比例+导出宽度 / 阴影+预览底色)，
+     避免等高对齐产生的大块空白。仅视觉顺序变化, DOM 顺序不变。 */
+  .panel > .group:nth-child(1) { order: 1; }
+  .panel > .group:nth-child(4) { order: 2; }
+  .panel > .group:nth-child(2) { order: 3; }
+  .panel > .group:nth-child(3) { order: 4; }
+  .panel > .group:nth-child(5) { order: 5; }
+  .panel > .group:nth-child(6) { order: 6; }
 }
 @media (max-width: 720px) {
   main { grid-template-columns: 1fr; }
