@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CardKit — 照片 EXIF 卡片生成器</title>
+<link rel="manifest" href="manifest.json">
+<script>
+/* 早期设定主题, 避免闪烁: 手动选择 > 系统偏好 > 亮色 */
+(function(){
+  var t = localStorage.getItem("cardkit-theme") ||
+          (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  document.documentElement.dataset.theme = t;
+})();
+</script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="logo"><span class="mark">▣</span>CardKit</div>
+  <div class="sub">照片 EXIF 参数卡片生成器</div>
+  <span class="badge">纯本地处理 · 照片不上传</span>
+  <span class="hbr" aria-hidden="true"></span>
+  <button id="themeToggle">☾ 暗色</button>
+</header>
+<main>
+  <!-- 左栏: 导入 -->
+  <aside id="left">
+    <h2>导入照片</h2>
+    <div id="dropzone">
+      <div class="dz-text">拖入照片到这里</div>
+      <button id="pickBtn">或点击选择</button>
+      <small>JPG / PNG / HEIC，可多选批量</small>
+      <button id="clearAll" class="clear-all" hidden>🗑 清除全部</button>
+    </div>
+    <div id="thumbs"></div>
+  </aside>
+
+  <!-- 中栏: 预览 + 导出 (主视觉) -->
+  <section id="center">
+    <div id="previewWrap" data-bg="checker" data-empty="1">
+      <div class="preview-empty">
+        <div class="pe-ic">🖼</div>
+        <div class="pe-title">导入照片后在这里预览</div>
+        <div class="pe-sub">支持 JPG / PNG / HEIC · 自动提取 EXIF 参数</div>
+      </div>
+      <canvas id="preview"></canvas>
+    </div>
+    <div class="actions">
+      <button id="export" class="primary">导出 PNG</button>
+      <button id="exportZip">批量导出 ZIP</button>
+      <button id="saveDirBtn" hidden title="选择照片所在文件夹后，导出会直接写入该文件夹">📁 保存到文件夹</button>
+      <span id="status"></span>
+    </div>
+  </section>
+
+  <!-- 右栏: 控件 -->
+  <aside id="controls">
+    <div class="panel">
+      <div class="group">
+        <h3>卡片模板</h3>
+        <div class="seg" id="tpl">
+          <label><input type="radio" name="tpl" value="blur" checked> 模糊衬底</label>
+          <label><input type="radio" name="tpl" value="solid"> 纯色衬底</label>
+          <label><input type="radio" name="tpl" value="backing"> 衬底面板</label>
+          <label><input type="radio" name="tpl" value="none"> 透明悬浮</label>
+        </div>
+        <div class="row" id="solidRow" hidden>
+          <span>衬底颜色</span><input type="color" id="solidColor" value="#101820">
+        </div>
+        <div class="row" id="backingRow" hidden>
+          <span>面板颜色</span><input type="color" id="backingColor" value="#F7F6F2">
+          <span>照片留白</span><input type="range" id="inset" min="0" max="160" step="4" value="48">
+          <small id="insetVal">48px</small>
+        </div>
+        <div class="row" id="marginRow">
+          <span>外框边距</span><input type="range" id="margin" min="0" max="200" step="2" value="80" title="四边等宽外框边距">
+          <small id="marginVal">80px</small>
+        </div>
+        <div class="row" id="radiusRow">
+          <span>圆角大小</span><input type="range" id="radius" min="0" max="80" step="2" value="30">
+          <small id="radiusVal">30px</small>
+        </div>
+      </div>
+
+      <div class="group">
+        <h3>导出比例</h3>
+        <div class="seg" id="aspect">
+          <label><input type="radio" name="asp" value="auto" checked> 自适应</label>
+          <label><input type="radio" name="asp" value="1.3333"> 4:3</label>
+          <label><input type="radio" name="asp" value="1"> 1:1</label>
+          <label><input type="radio" name="asp" value="0.75"> 3:4</label>
+        </div>
+      </div>
+
+      <div class="group">
+        <h3>导出宽度</h3>
+        <div class="seg" id="width">
+          <label><input type="radio" name="wid" value="1200" checked> 1200px</label>
+          <label><input type="radio" name="wid" value="2400"> 2400px（2x 高清）</label>
+        </div>
+      </div>
+
+      <div class="group">
+        <h3>底部文字 <small id="exifState"></small></h3>
+        <div class="row"><input id="t1" placeholder="机型，如 SONY α7m4（留空=不显示）"></div>
+        <div class="row"><input id="t2" placeholder="参数，如 193mm f/2.8 1/3200s ISO100（留空=不显示）"></div>
+        <div class="row">
+          <button id="exifFill">填入 EXIF</button>
+          <button id="clearText">清空文字</button>
+          <button id="clearAllText">清空所有图片文字</button>
+        </div>
+        <div class="row">
+          <label class="chk"><input type="checkbox" id="batchExif" checked> ZIP 按各图 EXIF</label>
+        </div>
+      </div>
+
+      <div class="group">
+        <h3>阴影</h3>
+        <div class="row">
+          <label class="chk"><input type="checkbox" id="shadowOn" checked> 启用阴影</label>
+        </div>
+        <div class="row">
+          <span>强度</span><input type="range" id="shadowStrength" min="0" max="200" step="5" value="100">
+          <small id="strengthVal">100%</small>
+        </div>
+        <div class="row">
+          <span>角度</span><input type="range" id="shadowAngle" min="0" max="360" step="5" value="90">
+          <small id="angleVal">90°</small>
+        </div>
+        <div class="row">
+          <span>柔化</span><input type="range" id="shadowSoft" min="50" max="200" step="5" value="100">
+          <small id="softVal">100%</small>
+        </div>
+      </div>
+
+      <div class="group">
+        <h3>预览底色</h3>
+        <div class="seg" id="previewBg">
+          <label><input type="radio" name="pvb" value="checker" checked> 棋盘</label>
+          <label><input type="radio" name="pvb" value="#ffffff"> 白</label>
+          <label><input type="radio" name="pvb" value="#111318"> 深</label>
+        </div>
+      </div>
+    </div>
+  </aside>
+</main>
+<input type="file" id="file" multiple accept="image/*,.heic,.heif" hidden>
+<script src="lib/exifr.min.js"></script>
+<script src="lib/jszip.min.js"></script>
+<script src="lib/heic2any.min.js"></script>
+<!-- Capacitor 原生运行时：仅打包 Android/iOS 时由 Capacitor 注入。
+     纯网页部署不含此文件，保留引用会 404，故注释掉；原生分支在 app.js 中仍保留。 -->
+<!-- <script src="lib/capacitor.js"></script> -->
+<script src="app.js"></script>
+</body>
+</html>

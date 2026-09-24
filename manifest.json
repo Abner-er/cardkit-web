@@ -1,0 +1,10 @@
+{
+  "name": "CardKit - 照片 EXIF 卡片生成器",
+  "short_name": "CardKit",
+  "description": "纯本地照片 EXIF 参数卡片生成器：模糊衬底/纯色/透明悬浮，导出 PNG 与 ZIP。",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f5f6f8",
+  "theme_color": "#3573ff",
+  "icons": []
+}
