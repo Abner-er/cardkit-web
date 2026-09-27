@@ -103,9 +103,40 @@
       </div>
 
       <div class="group">
+        <h3>导出格式</h3>
+        <div class="seg" id="outFmt">
+          <label><input type="radio" name="fmt" value="png" checked> PNG</label>
+          <label><input type="radio" name="fmt" value="jpeg"> JPEG</label>
+          <label><input type="radio" name="fmt" value="webp"> WebP</label>
+        </div>
+        <div class="row" id="qualityRow" hidden>
+          <span>质量</span><input type="range" id="outQuality" min="50" max="100" step="1" value="92">
+          <small id="qualityVal">92%</small>
+        </div>
+      </div>
+
+      <div class="group">
         <h3>底部文字 <small id="exifState"></small></h3>
         <div class="row"><input id="t1" placeholder="机型，如 SONY α7m4（留空=不显示）"></div>
         <div class="row"><input id="t2" placeholder="参数，如 193mm f/2.8 1/3200s ISO100（留空=不显示）"></div>
+        <div class="row">
+          <span>显示字段</span>
+          <div class="seg seg-tight" id="exifFields">
+            <label class="chk"><input type="checkbox" data-f="lens"> 镜头</label>
+            <label class="chk"><input type="checkbox" data-f="focal" checked> 焦距</label>
+            <label class="chk"><input type="checkbox" data-f="fn" checked> 光圈</label>
+            <label class="chk"><input type="checkbox" data-f="shutter" checked> 快门</label>
+            <label class="chk"><input type="checkbox" data-f="iso" checked> ISO</label>
+            <label class="chk"><input type="checkbox" data-f="date"> 日期</label>
+          </div>
+        </div>
+        <div class="row">
+          <span>文字布局</span>
+          <div class="seg" id="textLayout">
+            <label><input type="radio" name="tl" value="center" checked> 居中</label>
+            <label><input type="radio" name="tl" value="split"> 左机型 · 右参数</label>
+          </div>
+        </div>
         <div class="row">
           <button id="exifFill">填入 EXIF</button>
           <button id="clearText">清空文字</button>

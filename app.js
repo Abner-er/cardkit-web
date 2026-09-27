@@ -16,6 +16,12 @@ const state = {
   aspect: "auto",        // auto | 4:3 | 1:1 | 3:4
   outW: 1200,
   previewBg: "checker",
+  /* EXIF 字段开关: 控制「填入 EXIF」与批量导出时 t2 参数行拼哪些字段。
+     默认只开原有四项(焦距/光圈/快门/ISO), 镜头与日期默认关, 保证默认输出不变 */
+  exifFields: { focal: true, fn: true, shutter: true, iso: true, lens: false, date: false },
+  textLayout: "center",  // center=居中双行 | split=机型左/参数右
+  outFmt: "png",         // png | jpeg | webp
+  outQuality: 0.92,
 };
 const el = {
   t1: $("#t1"), t2: $("#t2"), exifState: $("#exifState"), status: $("#status"),
@@ -28,6 +34,16 @@ const NONE_DEFAULTS = { margin: 26, radius: 50 };
 /* 白底参数条的专属默认: 照片四周贴窄边距, 底部白条约 150px 高 */
 const WHITEFOOT_DEFAULTS = { margin: 40, radius: 24 };
 let userTouchedMargin = false, userTouchedRadius = false; // 用户手动调过则锁定, 切模板不再重置
+
+/* ================= EXIF 字段组装 ================= */
+/* 固定顺序: 镜头 焦距 光圈 快门 ISO 日期。开关关闭的字段跳过。
+   函数声明提升, 可在 loadFiles 之前引用。 */
+const EXIF_FIELD_ORDER = ["lens", "focal", "fn", "shutter", "iso", "date"];
+function buildT2(fields) {
+  if (!fields) return null;
+  const parts = EXIF_FIELD_ORDER.filter(k => state.exifFields[k] && fields[k]);
+  return parts.length ? parts.map(k => fields[k]).join("  ") : null;
+}
 
 /* ================= 图片导入 ================= */
 function blobToImage(blob) {
@@ -92,18 +108,31 @@ async function loadFiles(files) {
       };
       const t1 = [pick("make", "Make"), pick("model", "Model")]
         .filter(Boolean).map(String).join(" ").trim() || null;
-      const p = [];
+      /* 字段化存储: 每个字段独立保留, t2 由 buildT2 按开关组装。
+         手动编辑 t2 后 textOverride 优先, 开关变化不影响已手改的文本 */
+      const fields = {};
       const fl = rat(pick("focalLen35ef", "FocalLen35ef", "focalLength35ef", "FocalLength35ef")
         ?? pick("focalLength", "FocalLength"));
-      if (isFinite(fl) && fl >= 1) p.push(`${Math.round(fl)}mm`);
+      if (isFinite(fl) && fl >= 1) fields.focal = `${Math.round(fl)}mm`;
       const fn = rat(pick("fNumber", "FNumber"));
-      if (isFinite(fn) && fn > 0) p.push(`f/${fn.toFixed(1)}`);
+      if (isFinite(fn) && fn > 0) fields.fn = `f/${fn.toFixed(1)}`;
       const et = rat(pick("exposureTime", "ExposureTime"));
-      if (isFinite(et) && et > 0) p.push(et >= 1 ? `${et}s` : `1/${Math.round(1 / et)}s`);
+      if (isFinite(et) && et > 0) fields.shutter = et >= 1 ? `${et}s` : `1/${Math.round(1 / et)}s`;
       let isoRaw = pick("iso", "ISO", "ispeedRatings", "ISOSpeedRat");
       if (Array.isArray(isoRaw)) isoRaw = isoRaw[0];
-      if (isFinite(+isoRaw) && +isoRaw > 0) p.push(`ISO${Math.round(+isoRaw)}`);
-      photo.exif = { t1, t2: p.length ? p.join("  ") : null, raw: ex };
+      if (isFinite(+isoRaw) && +isoRaw > 0) fields.iso = `ISO${Math.round(+isoRaw)}`;
+      const lens = pick("lensModel", "LensModel", "lens", "Lens");
+      if (lens) {
+        const ls = String(lens).trim();
+        /* 部分机型(佳能等)的 LensInfo 是裸串 "[70, 200]" 或对象, 过滤掉 */
+        if (ls && !/^[\[{]/.test(ls) && ls.length >= 3) fields.lens = ls;
+      }
+      const dt = pick("dateTimeOriginal", "DateTimeOriginal", "createDate", "CreateDate");
+      if (dt instanceof Date && !isNaN(dt)) {
+        const pad = (n) => String(n).padStart(2, "0");
+        fields.date = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+      }
+      photo.exif = { t1, t2: buildT2(fields), fields, raw: ex };
     } catch { /* 无 EXIF 留空 */ }
     state.photos.push(photo);
     added++;
@@ -171,7 +200,7 @@ function selectActive() {
   if (!ph) return;
   const has = !!(ph.exif?.t1 || ph.exif?.t2);
   el.t1.value = ph.exif?.t1 || "";
-  el.t2.value = ph.exif?.t2 || "";
+  el.t2.value = ph.textOverride?.t2 ?? buildT2(ph.exif?.fields) ?? "";
   el.exifState.textContent = has ? "✓ EXIF 已读取" : "EXIF 缺失（可手填）";
   drawPreview();
 }
@@ -295,6 +324,40 @@ function drawShadow(ctx, W, H, shape, S, gaps) {
   ctx.drawImage(sc, 0, 0);
 }
 
+/* 文字对(机型+参数)统一绘制: center=双行居中 | split=机型左/参数右同一基线。
+   调用方负责 ctx.save/restore 与整卡圆角裁切。 */
+function drawTextPair(ctx, W, S, cy) {
+  const v1 = el.t1.value.trim(), v2 = el.t2.value.trim();
+  const lightBg = state.tpl === "none" || state.tpl === "whitefoot" ||
+    (state.tpl === "solid" && lum(state.solidColor) > 0.6) ||
+    (state.tpl === "backing" && lum(state.backingColor) > 0.6);
+  const c1 = lightBg ? "#1f1f1f" : "#ffffff";
+  const c2 = lightBg ? "#5a5a5a" : "rgba(255,255,255,0.92)";
+  const PAD = 44 * S;
+  ctx.textBaseline = "middle";
+  if (!lightBg) { ctx.shadowColor = "rgba(0,0,0,0.4)"; ctx.shadowOffsetY = 2 * S; ctx.shadowBlur = 8 * S; }
+  if (state.textLayout === "split") {
+    ctx.font = `700 ${Math.round(30 * S)}px Arial, "Helvetica Neue", sans-serif`;
+    ctx.textAlign = "left"; ctx.fillStyle = c1;
+    ctx.fillText(v1 || v2, PAD, cy);
+    ctx.font = `${Math.round(22 * S)}px Arial, "Helvetica Neue", sans-serif`;
+    ctx.textAlign = "right"; ctx.fillStyle = c2;
+    if (v1 && v2) ctx.fillText(v2, W - PAD, cy);
+  } else {
+    const both = v1 && v2;
+    ctx.textAlign = "center";
+    ctx.font = `700 ${Math.round(34 * S)}px Arial, "Helvetica Neue", sans-serif`;
+    ctx.fillStyle = c1;
+    ctx.fillText(v1 || v2, W / 2, both ? cy - 14 * S : cy);
+    if (both) {
+      ctx.font = `${Math.round(21 * S)}px Arial, "Helvetica Neue", sans-serif`;
+      ctx.fillStyle = c2;
+      ctx.fillText(v2, W / 2, cy + 18 * S);
+    }
+  }
+  ctx.shadowColor = "transparent"; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+}
+
 function renderBacking(ctx, W, S, idx) {
   const g = backingGeo(W, S, idx);
   const img = state.photos[idx].img;
@@ -320,20 +383,9 @@ function renderBacking(ctx, W, S, idx) {
   ctx.restore();
   /* 5. 底部文字 (面板内) */
   if (hasText()) {
-    const light = lum(state.backingColor) > 0.6;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    const both = !!(el.t1.value.trim() && el.t2.value.trim());
-    ctx.font = `700 ${Math.round(34 * S)}px Arial, "Helvetica Neue", sans-serif`;
-    ctx.fillStyle = light ? "#1f1f1f" : "#ffffff";
-    if (!light) { ctx.shadowColor = "rgba(0,0,0,0.35)"; ctx.shadowBlur = 6 * S; ctx.shadowOffsetY = 1 * S; }
-    ctx.fillText(el.t1.value.trim() || el.t2.value.trim(), W / 2, both ? g.textCY - 14 * S : g.textCY);
-    if (both) {
-      ctx.font = `${Math.round(21 * S)}px Arial, "Helvetica Neue", sans-serif`;
-      ctx.fillStyle = light ? "#5a5a5a" : "rgba(255,255,255,0.92)";
-      ctx.fillText(el.t2.value, W / 2, g.textCY + 18 * S);
-    }
-    ctx.shadowColor = "transparent"; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+    ctx.save();
+    drawTextPair(ctx, W, S, g.textCY);
+    ctx.restore();
   }
   ctx.restore(); /* 整卡圆角裁切 */
 }
@@ -438,22 +490,9 @@ function renderCard(ctx, W, S, idx, preview) {
       ctx.fillRect(0, H - footerH, W, footerH);
       ctx.restore();
     }
-    const lightBg = state.tpl === "none" || state.tpl === "whitefoot" ||
-      (state.tpl === "solid" && lum(state.solidColor) > 0.6);
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    const both = !!(el.t1.value.trim() && el.t2.value.trim());
-    const cy = H - footerH / 2;
-    ctx.font = `700 ${Math.round(38 * S)}px Arial, "Helvetica Neue", sans-serif`;
-    if (!lightBg) { ctx.shadowColor = "rgba(0,0,0,0.4)"; ctx.shadowOffsetY = 2 * S; ctx.shadowBlur = 8 * S; }
-    ctx.fillStyle = lightBg ? "#1f1f1f" : "#ffffff";
-    ctx.fillText(el.t1.value.trim() || el.t2.value.trim(), W / 2, both ? cy - 16 * S : cy);
-    if (both) {
-      ctx.font = `${Math.round(23 * S)}px Arial, "Helvetica Neue", sans-serif`;
-      ctx.fillStyle = lightBg ? "#5a5a5a" : "rgba(255,255,255,0.92)";
-      ctx.fillText(el.t2.value, W / 2, cy + 20 * S);
-    }
-    ctx.shadowColor = "transparent"; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+    ctx.save();
+    drawTextPair(ctx, W, S, H - footerH / 2);
+    ctx.restore();
   }
   if (preview) drawBoundaryHint(ctx, W, H, S, idx);
 }
@@ -491,12 +530,30 @@ function renderOffscreen(outW, idx) {
   return c;
 }
 
-function downloadPng(idx) {
+/* ================= 导出编码 (PNG / JPEG / WebP) ================= */
+function fmtExt() { return state.outFmt === "jpeg" ? "jpg" : state.outFmt; }
+function encodeCanvas(c) {
+  const mime = state.outFmt === "png" ? "image/png"
+    : state.outFmt === "jpeg" ? "image/jpeg" : "image/webp";
+  if (mime === "image/png") return new Promise(r => c.toBlob(r, mime));
+  /* JPEG/WebP 不支持透明: 圆角外与透明悬浮模板会出黑块, 先铺白底再合成 */
+  const o = document.createElement("canvas");
+  o.width = c.width; o.height = c.height;
+  const g = o.getContext("2d");
+  g.fillStyle = "#ffffff";
+  g.fillRect(0, 0, o.width, o.height);
+  g.drawImage(c, 0, 0);
+  return new Promise(r => o.toBlob(r, mime, state.outQuality));
+}
+
+async function downloadCard(idx) {
   const c = renderOffscreen(state.outW, idx);
+  const blob = await encodeCanvas(c);
   const a = document.createElement("a");
-  a.download = `${state.photos[idx].name}_card.png`;
-  a.href = c.toDataURL("image/png");
+  a.download = `${state.photos[idx].name}_card.${fmtExt()}`;
+  a.href = URL.createObjectURL(blob);
   a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
 /* ================= 保存到选定文件夹 (File System Access API) ================= */
@@ -606,13 +663,13 @@ async function exportZip() {
   for (let i = 0; i < state.photos.length; i++) {
     const ph = state.photos[i];
     const t1v = usePerExif ? (ph.textOverride?.t1 ?? ph.exif?.t1 ?? "") : el.t1.value;
-    const t2v = usePerExif ? (ph.textOverride?.t2 ?? ph.exif?.t2 ?? "") : el.t2.value;
+    const t2v = usePerExif ? (ph.textOverride?.t2 ?? buildT2(ph.exif?.fields) ?? "") : el.t2.value;
     el.t1.value = t1v; el.t2.value = t2v;
     el.status.textContent = `导出 ${i + 1}/${state.photos.length}: ${ph.name}`;
     await new Promise(r => setTimeout(r, 30));
     const c = renderOffscreen(state.outW, i);
-    const buf = await new Promise(r => c.toBlob(r, "image/png"));
-    zip.file(`${ph.name}_card.png`, buf);
+    const buf = await (await encodeCanvas(c)).arrayBuffer();
+    zip.file(`${ph.name}_card.${fmtExt()}`, buf);
   }
   [el.t1, el.t2].forEach((e, j) => (e.value = saved[j]));
   const blob = await zip.generateAsync({ type: "blob" });
@@ -697,6 +754,35 @@ document.querySelectorAll('input[name="wid"]').forEach(r =>
   r.onchange = (e) => { state.outW = +e.target.value; });
 document.querySelectorAll('input[name="pvb"]').forEach(r =>
   r.onchange = (e) => { state.previewBg = e.target.value; drawPreview(); });
+
+/* ---------- 导出格式 / 质量 ---------- */
+document.querySelectorAll('input[name="fmt"]').forEach(r =>
+  r.onchange = (e) => {
+    state.outFmt = e.target.value;
+    $("#qualityRow").hidden = state.outFmt === "png";
+  });
+$("#outQuality").oninput = (e) => {
+  state.outQuality = +e.target.value / 100;
+  $("#qualityVal").textContent = e.target.value + "%";
+};
+
+/* ---------- 文字布局 ---------- */
+document.querySelectorAll('input[name="tl"]').forEach(r =>
+  r.onchange = (e) => { state.textLayout = e.target.value; drawPreview(); });
+
+/* ---------- EXIF 字段开关 ---------- */
+/* 勾选变化后: 对当前图重算 t2 并写回输入框(同时更新 textOverride, 让批量导出跟随);
+   未导入照片时只改 state, 下次导入/填入时生效。 */
+document.querySelectorAll('#exifFields input[data-f]').forEach(cb =>
+  cb.onchange = () => {
+    cb.checked ? state.exifFields[cb.dataset.f] = true : delete state.exifFields[cb.dataset.f];
+    const ph = state.photos[state.active];
+    if (!ph) { drawPreview(); return; }
+    const rebuilt = buildT2(ph.exif?.fields) || "";
+    el.t2.value = rebuilt;
+    if (ph.textOverride) ph.textOverride.t2 = rebuilt;
+    drawPreview();
+  });
 el.t1.oninput = drawPreview;
 el.t2.oninput = drawPreview;
 
@@ -737,7 +823,7 @@ $("#exifFill").onclick = () => {
   const ph = state.photos[state.active];
   if (!ph) return;
   el.t1.value = ph?.exif?.t1 || "";
-  el.t2.value = ph?.exif?.t2 || "";
+  el.t2.value = buildT2(ph?.exif?.fields) || "";
   // 记到该图的 textOverride, 让 ZIP 批量导出"按各图 EXIF"时能取到; 被"清空所有图片文字"移除
   ph.textOverride = { t1: el.t1.value, t2: el.t2.value };
   el.exifState.textContent = ph?.exif?.t1 || ph?.exif?.t2 ? "✓ 已填入 EXIF" : "该照片无 EXIF";
@@ -757,9 +843,9 @@ $("#export").onclick = async () => {
   if (isNative) {
     el.status.textContent = "正在导出…";
     const c = renderOffscreen(state.outW, state.active);
-    const blob = await new Promise(r => c.toBlob(r, "image/png"));
+    const blob = await encodeCanvas(c);
     try {
-      const uri = await nativeSave(blob, `${state.photos[state.active].name}_card.png`);
+      const uri = await nativeSave(blob, `${state.photos[state.active].name}_card.${fmtExt()}`);
       el.status.className = "ok";
       el.status.textContent = "✓ 已保存到 文件/CardKit";
     } catch (e) {
@@ -769,8 +855,8 @@ $("#export").onclick = async () => {
     return;
   }
   const c = renderOffscreen(state.outW, state.active);
-  const blob = await new Promise(r => c.toBlob(r, "image/png"));
-  const name = `${state.photos[state.active].name}_card.png`;
+  const blob = await encodeCanvas(c);
+  const name = `${state.photos[state.active].name}_card.${fmtExt()}`;
   try {
     const dir = await saveToDir(blob, name);
     if (dir) {
@@ -781,9 +867,9 @@ $("#export").onclick = async () => {
   } catch (e) {
     if (e && e.name === "AbortError") return; // 用户取消选择
   }
-  downloadPng(state.active);
+  await downloadCard(state.active);
   el.status.className = "ok";
-  el.status.textContent = "✓ PNG 已导出" + (fsSupport ? "（点「📁 保存到文件夹」可写入指定目录）" : "");
+  el.status.textContent = `✓ ${state.outFmt.toUpperCase()} 已导出` + (fsSupport ? "（点「📁 保存到文件夹」可写入指定目录）" : "");
 };
 $("#exportZip").onclick = async () => {
   if (!state.photos.length) return (el.status.textContent = "先导入照片");
@@ -794,13 +880,13 @@ $("#exportZip").onclick = async () => {
   for (let i = 0; i < state.photos.length; i++) {
     const ph = state.photos[i];
     const t1v = usePerExif ? (ph.textOverride?.t1 ?? ph.exif?.t1 ?? "") : el.t1.value;
-    const t2v = usePerExif ? (ph.textOverride?.t2 ?? ph.exif?.t2 ?? "") : el.t2.value;
+    const t2v = usePerExif ? (ph.textOverride?.t2 ?? buildT2(ph.exif?.fields) ?? "") : el.t2.value;
     el.t1.value = t1v; el.t2.value = t2v;
     el.status.textContent = `导出 ${i + 1}/${state.photos.length}: ${ph.name}`;
     await new Promise(r => setTimeout(r, 30));
     const c = renderOffscreen(state.outW, i);
-    const buf = await new Promise(r => c.toBlob(r, "image/png"));
-    zip.file(`${ph.name}_card.png`, buf);
+    const buf = await (await encodeCanvas(c)).arrayBuffer();
+    zip.file(`${ph.name}_card.${fmtExt()}`, buf);
   }
   [el.t1, el.t2].forEach((e, j) => (e.value = saved[j]));
   const blob = await zip.generateAsync({ type: "blob" });

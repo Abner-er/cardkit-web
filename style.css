@@ -252,6 +252,17 @@ section, aside { min-width: 0; }
   color: var(--text);
   font-weight: 600;
 }
+/* 字段开关行: 紧凑复选标签, 与 .seg 视觉区分 */
+.seg-tight label.chk {
+  background: transparent; border-color: transparent;
+  padding: 4px 8px; font-weight: 400;
+}
+.seg-tight label.chk:hover { background: var(--bg-surface); }
+.seg-tight label.chk:has(input:checked) {
+  background: var(--accent-soft); border-color: transparent;
+  color: var(--text); font-weight: 500;
+}
+.seg-tight label.chk input { display: inline-block; }
 
 /* 复选框 */
 .chk { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); cursor: pointer; user-select: none; }
