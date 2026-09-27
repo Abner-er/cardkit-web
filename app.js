@@ -511,15 +511,32 @@ function drawPreview() {
   const idx = state.active;
   if (!state.photos[idx]) return;
   setPreviewEmpty();
-  const W = 600, S = W / CANVAS_REF_W;
+  const wrap = $("#previewWrap");
+  /* 预览按容器实际宽度渲染 (×DPR 防模糊), 卡片随中栏宽度放大,
+     不再固定 600px —— 否则宽屏下中栏右侧空出一大块, 预览显小、与右栏高度失衡 */
+  const avail = Math.max(320, wrap.clientWidth - 28); // 28 = padding 14×2
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  /* 渲染宽度封顶 1200: 宽屏×2DPR 下 1744px 画布每滑一次就跑三层高斯模糊会卡,
+     1200 仍有约 1.4x 超采样, 观感无损 */
+  const W = Math.min(1200, Math.round(avail * dpr));
+  const S = W / CANVAS_REF_W;
   const c = el.preview;
   c.width = W;
   c.height = cardH(W, S, idx);
+  /* CSS 显示宽度 = 内部画布 / DPR, 与渲染分辨率严格一致, 不拉伸不模糊 */
+  c.style.width = (W / dpr) + "px";
+  c.style.height = (c.height / dpr) + "px";
   renderCard(c.getContext("2d"), W, S, idx, true);
-  const wrap = $("#previewWrap");
   wrap.dataset.bg = state.previewBg === "checker" ? "checker"
     : state.previewBg === "#ffffff" ? "white" : "dark";
 }
+/* 中栏宽度变化 (窗口缩放 / 断点切换) 时重绘预览, rAF 去抖避免每次 resize 都跑高斯模糊 */
+let previewRaf = 0;
+function schedulePreview() {
+  if (previewRaf) return;
+  previewRaf = requestAnimationFrame(() => { previewRaf = 0; drawPreview(); });
+}
+new ResizeObserver(schedulePreview).observe($("#previewWrap"));
 
 function renderOffscreen(outW, idx) {
   const S = outW / CANVAS_REF_W;
