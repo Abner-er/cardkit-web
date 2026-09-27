@@ -19,7 +19,7 @@ function stubEl(id) {
       if (typeof p === "string" && p !== "then") return () => {}; // 任何方法调用 (clearRect/drawImage/...)
       return undefined;
     }, set: () => true }),
-    width: 600, height: 400,
+    width: 600, height: 400, clientWidth: 800, clientHeight: 400,
   };
 }
 
@@ -42,6 +42,7 @@ global.document = {
 };
 global.window = {
   addEventListener() {},
+  devicePixelRatio: 1,
   showDirectoryPicker: null,
   isSecureContext: true,
   location: { href: "http://localhost:8123/" },
@@ -54,6 +55,7 @@ global.Blob = class { constructor(p, o) { this.size = (p && p[0] && p[0].length)
 global.self = global;
 global.navigator = { userAgent: "node", language: "zh-CN" };
 global.requestAnimationFrame = () => 0;
+global.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
 
 // ========== 验证 (eval 内执行, 可访问 const state/renderThumbs) ==========
 const checks = `

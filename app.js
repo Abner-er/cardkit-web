@@ -516,16 +516,19 @@ function drawPreview() {
      不再固定 600px —— 否则宽屏下中栏右侧空出一大块, 预览显小、与右栏高度失衡 */
   const avail = Math.max(320, wrap.clientWidth - 28); // 28 = padding 14×2
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  /* 渲染宽度封顶 1200: 宽屏×2DPR 下 1744px 画布每滑一次就跑三层高斯模糊会卡,
-     1200 仍有约 1.4x 超采样, 观感无损 */
+  /* 渲染分辨率封顶 1200 控性能: 宽屏×2DPR 下 1600+ 画布每滑一次都跑三层高斯模糊会卡。
+     封顶只作用于「内部画布像素」, 不影响显示尺寸。 */
   const W = Math.min(1200, Math.round(avail * dpr));
   const S = W / CANVAS_REF_W;
   const c = el.preview;
   c.width = W;
   c.height = cardH(W, S, idx);
-  /* CSS 显示宽度 = 内部画布 / DPR, 与渲染分辨率严格一致, 不拉伸不模糊 */
-  c.style.width = (W / dpr) + "px";
-  c.style.height = (c.height / dpr) + "px";
+  /* CSS 显示宽度恒等于容器可用宽 avail —— 填满中栏, 不再被 W/dpr 卡小。
+     显示宽与内部分辨率 W 按 avail/W 等比换算:
+     · W == avail*dpr (窄屏/1x): 1:1, 清晰
+     · W == 1200 (宽屏 2x, 此时 avail*dpr>1200): 从高分辨率降采样, 观感无损 */
+  c.style.width = avail + "px";
+  c.style.height = (c.height * (avail / W)) + "px";
   renderCard(c.getContext("2d"), W, S, idx, true);
   wrap.dataset.bg = state.previewBg === "checker" ? "checker"
     : state.previewBg === "#ffffff" ? "white" : "dark";
