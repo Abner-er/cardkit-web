@@ -97,11 +97,13 @@ main {
 }
 section, aside { min-width: 0; }
 
-/* ---------- 左栏: 导入 ---------- */
+/* ---------- 左栏: 导入 + 导出参数 (素材进出侧) ----------
+   透明容器, 纵向堆两个独立面板, 与右栏视觉重量对称, 消除"左空右挤"。
+   sticky 作用于整列。 */
 #left {
   position: sticky; top: 64px;
-  background: var(--bg-panel); border: 1px solid var(--border);
-  border-radius: 12px; padding: 14px; box-shadow: var(--shadow);
+  display: flex; flex-direction: column; gap: 12px;
+  min-width: 0;
 }
 #left h2, #controls h2 {
   font-size: 11px; font-weight: 590; text-transform: uppercase;
@@ -298,14 +300,9 @@ button:hover { border-color: var(--border-strong); color: var(--text); }
   .group { border-top: 0; padding: 14px 0; min-width: 0; }
   /* 宽列里让滑块吃满剩余空间, 避免右侧大片留白 */
   .row input[type="range"] { flex: 1 1 130px; max-width: 280px; }
-  /* 小屏下重排顺序, 让高矮组配对 (卡片模板+底部文字 / 导出比例+导出宽度 / 阴影+预览底色)，
-     避免等高对齐产生的大块空白。仅视觉顺序变化, DOM 顺序不变。 */
-  .panel > .group:nth-child(1) { order: 1; }
-  .panel > .group:nth-child(4) { order: 2; }
-  .panel > .group:nth-child(2) { order: 3; }
-  .panel > .group:nth-child(3) { order: 4; }
-  .panel > .group:nth-child(5) { order: 5; }
-  .panel > .group:nth-child(6) { order: 6; }
+  /* 右栏 panel 现在 4 组, DOM 序 = 模板/底部文字/阴影/预览底色。
+     窄屏 auto-fit 行优先两列打包: 模板+阴影 → 左列, 底部文字+预览底色 → 右列,
+     两列高差仅约 47px, 无需额外 order 重排 (自然序即均衡且阅读顺序连贯)。 */
 }
 @media (max-width: 720px) {
   main { grid-template-columns: 1fr; }

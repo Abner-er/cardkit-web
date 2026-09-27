@@ -24,16 +24,53 @@
   <button id="themeToggle">☾ 暗色</button>
 </header>
 <main>
-  <!-- 左栏: 导入 -->
+  <!-- 左栏: 素材进出侧 (导入照片 + 导出参数) -->
   <aside id="left">
-    <h2>导入照片</h2>
-    <div id="dropzone">
-      <div class="dz-text">拖入照片到这里</div>
-      <button id="pickBtn">或点击选择</button>
-      <small>JPG / PNG / HEIC，可多选批量</small>
-      <button id="clearAll" class="clear-all" hidden>🗑 清除全部</button>
+    <div class="panel">
+      <div class="group">
+        <h2>导入照片</h2>
+        <div id="dropzone">
+          <div class="dz-text">拖入照片到这里</div>
+          <button id="pickBtn">或点击选择</button>
+          <small>JPG / PNG / HEIC，可多选批量</small>
+          <button id="clearAll" class="clear-all" hidden>🗑 清除全部</button>
+        </div>
+        <div id="thumbs"></div>
+      </div>
     </div>
-    <div id="thumbs"></div>
+    <div class="panel" id="exportPanel">
+      <div class="group">
+        <h3>导出参数</h3>
+        <div class="row">
+          <span>比例</span>
+          <div class="seg" id="aspect">
+            <label><input type="radio" name="asp" value="auto" checked> 自适应</label>
+            <label><input type="radio" name="asp" value="1.3333"> 4:3</label>
+            <label><input type="radio" name="asp" value="1"> 1:1</label>
+            <label><input type="radio" name="asp" value="0.75"> 3:4</label>
+          </div>
+        </div>
+        <div class="row">
+          <span>宽度</span>
+          <div class="seg" id="width">
+            <label><input type="radio" name="wid" value="1200" checked> 1200px</label>
+            <label><input type="radio" name="wid" value="2400"> 2400px</label>
+          </div>
+        </div>
+        <div class="row">
+          <span>格式</span>
+          <div class="seg" id="outFmt">
+            <label><input type="radio" name="fmt" value="png" checked> PNG</label>
+            <label><input type="radio" name="fmt" value="jpeg"> JPEG</label>
+            <label><input type="radio" name="fmt" value="webp"> WebP</label>
+          </div>
+        </div>
+        <div class="row" id="qualityRow" hidden>
+          <span>质量</span><input type="range" id="outQuality" min="50" max="100" step="1" value="92">
+          <small id="qualityVal">92%</small>
+        </div>
+      </div>
+    </div>
   </aside>
 
   <!-- 中栏: 预览 + 导出 (主视觉) -->
@@ -81,37 +118,6 @@
         <div class="row" id="radiusRow">
           <span>圆角大小</span><input type="range" id="radius" min="0" max="80" step="2" value="30">
           <small id="radiusVal">30px</small>
-        </div>
-      </div>
-
-      <div class="group">
-        <h3>导出比例</h3>
-        <div class="seg" id="aspect">
-          <label><input type="radio" name="asp" value="auto" checked> 自适应</label>
-          <label><input type="radio" name="asp" value="1.3333"> 4:3</label>
-          <label><input type="radio" name="asp" value="1"> 1:1</label>
-          <label><input type="radio" name="asp" value="0.75"> 3:4</label>
-        </div>
-      </div>
-
-      <div class="group">
-        <h3>导出宽度</h3>
-        <div class="seg" id="width">
-          <label><input type="radio" name="wid" value="1200" checked> 1200px</label>
-          <label><input type="radio" name="wid" value="2400"> 2400px（2x 高清）</label>
-        </div>
-      </div>
-
-      <div class="group">
-        <h3>导出格式</h3>
-        <div class="seg" id="outFmt">
-          <label><input type="radio" name="fmt" value="png" checked> PNG</label>
-          <label><input type="radio" name="fmt" value="jpeg"> JPEG</label>
-          <label><input type="radio" name="fmt" value="webp"> WebP</label>
-        </div>
-        <div class="row" id="qualityRow" hidden>
-          <span>质量</span><input type="range" id="outQuality" min="50" max="100" step="1" value="92">
-          <small id="qualityVal">92%</small>
         </div>
       </div>
 
