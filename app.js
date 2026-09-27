@@ -3,7 +3,7 @@
 const $ = (s) => document.querySelector(s);
 const state = {
   photos: [], active: 0,
-  tpl: "blur",            // blur | solid | none | backing
+  tpl: "blur",            // blur | solid | none | backing | whitefoot
   solidColor: "#101820",
   backingColor: "#F7F6F2",
   inset: 48,              // 衬底面板: 照片内嵌留白 (px @1200)
@@ -25,6 +25,8 @@ const el = {
 const CANVAS_REF_W = 1200; // 参考宽度, 所有几何按 S = W/1200 缩放
 /* 透明悬浮的专属默认: 外框边距 26 / 圆角 50 (其余模板保持 80 / 30) */
 const NONE_DEFAULTS = { margin: 26, radius: 50 };
+/* 白底参数条的专属默认: 照片四周贴窄边距, 底部白条约 150px 高 */
+const WHITEFOOT_DEFAULTS = { margin: 40, radius: 24 };
 let userTouchedMargin = false, userTouchedRadius = false; // 用户手动调过则锁定, 切模板不再重置
 
 /* ================= 图片导入 ================= */
@@ -211,7 +213,10 @@ function cardH(W, S, idx) {
   if (state.tpl === "backing") return backingGeo(W, S, idx).H;
   const m = state.margin * S;
   const phh = (W - 2 * m) * photosRatio(idx);
-  const footerH = hasText() ? 150 * S : m; // 无文字时底部=边距, 四边等宽
+  /* whitefoot: 底部白参数条恒存在(无文字时也保留, 类似拍立得下留白);
+     其余模板无文字时底部=边距, 四边等宽 */
+  const footerH = hasText() ? 150 * S
+    : (state.tpl === "whitefoot" ? 100 * S : m);
   if (state.aspect === "auto") return Math.round(m + phh + footerH);
   return Math.round(W / +state.aspect);
 }
@@ -232,7 +237,8 @@ function photoRect(W, H, S, idx) {
   let sw = W - 2 * m, sh = sw * photosRatio(idx);
   let sx = m, sy = m;
   if (state.aspect !== "auto") {
-    const footerH = hasText() ? 150 * S : 40 * S;
+    const footerH = hasText() ? 150 * S
+      : (state.tpl === "whitefoot" ? 100 * S : 40 * S);
     const avail = H - m - footerH;
     if (sh > avail) { sh = avail; sw = sh / photosRatio(idx); }
     sx = (W - sw) / 2;
@@ -394,6 +400,14 @@ function renderCard(ctx, W, S, idx, preview) {
     ctx.fillStyle = state.solidColor;
     ctx.fillRect(0, 0, W, H);
     ctx.restore();
+  } else if (state.tpl === "whitefoot") {
+    /* 白底参数条: 整卡纯白, 照片贴上方, 底部留白放深色 EXIF 文字 */
+    ctx.save();
+    rr(ctx, 0, 0, W, H, outer);
+    ctx.clip();
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
   }
   // tpl === "none": 保持全透明
 
@@ -424,7 +438,7 @@ function renderCard(ctx, W, S, idx, preview) {
       ctx.fillRect(0, H - footerH, W, footerH);
       ctx.restore();
     }
-    const lightBg = state.tpl === "none" ||
+    const lightBg = state.tpl === "none" || state.tpl === "whitefoot" ||
       (state.tpl === "solid" && lum(state.solidColor) > 0.6);
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -661,15 +675,19 @@ $("#backingColor").oninput = (e) => { state.backingColor = e.target.value; drawP
 $("#inset").oninput = (e) => { state.inset = +e.target.value; $("#insetVal").textContent = e.target.value + "px"; drawPreview(); };
 $("#margin").oninput = (e) => { state.margin = +e.target.value; userTouchedMargin = true; $("#marginVal").textContent = e.target.value + "px"; drawPreview(); };
 $("#radius").oninput = (e) => { state.radius = +e.target.value; userTouchedRadius = true; $("#radiusVal").textContent = e.target.value + "px"; drawPreview(); };
-/* 切到各模板时, 若用户尚未手动调过边距/圆角, 套用该模板专属默认 (透明悬浮=26/50, 其余=80/30) */
+/* 切到各模板时, 若用户尚未手动调过边距/圆角, 套用该模板专属默认
+   (透明悬浮=26/50, 白底参数条=40/24, 其余=80/30) */
 function applyTplDefaults() {
   const isNone = state.tpl === "none";
+  const isWhitefoot = state.tpl === "whitefoot";
   if (!userTouchedMargin) {
-    state.margin = isNone ? NONE_DEFAULTS.margin : 80;
+    state.margin = isNone ? NONE_DEFAULTS.margin
+      : isWhitefoot ? WHITEFOOT_DEFAULTS.margin : 80;
     const m = $("#margin"); m.value = state.margin; $("#marginVal").textContent = state.margin + "px";
   }
   if (!userTouchedRadius) {
-    state.radius = isNone ? NONE_DEFAULTS.radius : 30;
+    state.radius = isNone ? NONE_DEFAULTS.radius
+      : isWhitefoot ? WHITEFOOT_DEFAULTS.radius : 30;
     const r = $("#radius"); r.value = state.radius; $("#radiusVal").textContent = state.radius + "px";
   }
 }
